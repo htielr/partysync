@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".PartySyncApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PartySync">
+
+        <!--
+          WorkManager's default androidx.startup initializer runs via ContentProvider.onCreate(),
+          which fires before Application.onCreate() — i.e. before Hilt has injected our
+          HiltWorkerFactory. Left alone, it self-initializes WorkManager with the default
+          reflection-based factory first, and our Configuration.Provider setup in PartySyncApp
+          never takes effect. Removing it forces on-demand initialization using our config
+          instead (see PartySyncApp.workManagerConfiguration).
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PartySync">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.share.ShareUploadActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PartySync">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".sync.worker.UploadControlReceiver"
+            android:exported="false" />
+
+        <!--
+          WorkManager's own manifest declares SystemForegroundService with no
+          foregroundServiceType. Our workers call setForeground(...) with
+          FOREGROUND_SERVICE_TYPE_DATA_SYNC, and Android requires that runtime type to be a
+          subset of what's declared here — without this override the service crashes on
+          start with "foregroundServiceType 0x1 is not a subset of ... 0x0".
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+    </application>
+
+</manifest>
