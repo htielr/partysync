@@ -2,6 +2,8 @@
 
 A native Android client for syncing files between your phone and a self-hosted [copyparty](https://github.com/9001/copyparty) file server.
 
+PartySync lets you mirror folders on your phone to your own server automatically, share files to it straight from the Android share sheet, and browse the server's folder tree from within the app — all without relying on a third-party cloud provider.
+
 ## Features
 
 - **One-way and two-way folder sync** — pick a folder on your phone (via SAF) and map it to a path on the server. Two-way sync does a 3-way merge (baseline vs. local vs. remote); conflicts are kept as both copies rather than silently overwritten. Deletes never propagate automatically — a delete on one side gets restored from the other side on the next sync, by design.
