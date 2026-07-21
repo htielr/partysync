@@ -2,27 +2,36 @@ package com.karthick.partysync.ui.browse
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -48,12 +57,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.karthick.partysync.data.remote.RemoteEntry
-import com.karthick.partysync.ui.common.formatSize
 import com.karthick.partysync.ui.navigation.PartySyncBottomBar
 import com.karthick.partysync.ui.navigation.Screen
 
@@ -67,6 +80,10 @@ fun BrowseScreen(
     val context = LocalContext.current
     var serverMenuExpanded by remember { mutableStateOf(false) }
     var fabMenuExpanded by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = uiState.currentPath.isNotEmpty()) {
+        viewModel.navigateUp()
+    }
 
     val uploadLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -122,6 +139,16 @@ fun BrowseScreen(
                         }
                     } else {
                         Text(currentName)
+                    }
+                },
+                actions = {
+                    if (uiState.selectedServerId != null) {
+                        IconButton(onClick = viewModel::toggleViewMode) {
+                            Icon(
+                                if (uiState.viewMode == BrowseViewMode.LIST) Icons.Filled.GridView else Icons.AutoMirrored.Filled.List,
+                                contentDescription = "Toggle list/grid view",
+                            )
+                        }
                     }
                 },
             )
@@ -282,10 +309,28 @@ private fun BrowseContent(uiState: BrowseUiState, viewModel: BrowseViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
                 )
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+                uiState.viewMode == BrowseViewMode.LIST -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(uiState.entries, key = { it.name }) { entry ->
                         EntryRow(
                             entry = entry,
+                            thumbnailRequest = viewModel.thumbnailRequest(entry),
+                            onClick = {
+                                if (entry.isDirectory) viewModel.navigateInto(entry) else viewModel.downloadAndOpen(entry)
+                            },
+                            onRename = { viewModel.requestRename(entry) },
+                            onDelete = { viewModel.requestDelete(entry) },
+                        )
+                    }
+                }
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 96.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
+                ) {
+                    items(uiState.entries, key = { it.name }) { entry ->
+                        GridEntryCell(
+                            entry = entry,
+                            thumbnailRequest = viewModel.thumbnailRequest(entry),
                             onClick = {
                                 if (entry.isDirectory) viewModel.navigateInto(entry) else viewModel.downloadAndOpen(entry)
                             },
@@ -300,8 +345,15 @@ private fun BrowseContent(uiState: BrowseUiState, viewModel: BrowseViewModel) {
 }
 
 @Composable
-private fun EntryRow(entry: RemoteEntry, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun EntryRow(
+    entry: RemoteEntry,
+    thumbnailRequest: Pair<String, String>?,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -309,22 +361,30 @@ private fun EntryRow(entry: RemoteEntry, onClick: () -> Unit, onRename: () -> Un
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (entry.isDirectory) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-            contentDescription = null,
-        )
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier.weight(1f).padding(start = 12.dp),
-        ) {
-            Text(entry.name, style = MaterialTheme.typography.bodyLarge)
-            if (!entry.isDirectory) {
-                Text(
-                    formatSize(entry.size),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        if (thumbnailRequest != null && entry.isThumbnailable()) {
+            val (url, password) = thumbnailRequest
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(url)
+                    .setHeader("PW", password)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(40.dp).clip(MaterialTheme.shapes.small),
+            )
+        } else {
+            Icon(
+                if (entry.isDirectory) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+            )
         }
+        Text(
+            entry.name,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f).padding(start = 12.dp),
+        )
         Box {
             IconButton(onClick = { menuExpanded = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = "More options")
@@ -348,5 +408,91 @@ private fun EntryRow(entry: RemoteEntry, onClick: () -> Unit, onRename: () -> Un
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun GridEntryCell(
+    entry: RemoteEntry,
+    thumbnailRequest: Pair<String, String>?,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .padding(8.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(MaterialTheme.shapes.small),
+        ) {
+            if (thumbnailRequest != null && entry.isThumbnailable()) {
+                val (url, password) = thumbnailRequest
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(url)
+                        .setHeader("PW", password)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = entry.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (entry.isDirectory) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(0.5f),
+                    )
+                }
+            }
+            Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onRename()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        },
+                    )
+                }
+            }
+        }
+        Text(
+            entry.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }

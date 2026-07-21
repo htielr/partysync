@@ -133,6 +133,25 @@ class CopyPartyApi @Inject constructor(
     }
 
     /**
+     * Builds a thumbnail URL for an entry via copyparty's `?th=j` endpoint (verified against the
+     * real server and `copyparty/web/browser.js`'s own grid-view thumbnail construction): works
+     * uniformly on any path — images get a real thumbnail, videos get a frame-extract thumbnail,
+     * everything else gets a generic icon. Callers only invoke this for entries they've already
+     * decided are image/video files (see `ui/browse/ThumbnailSupport.kt`). `j` = JPEG, no crop
+     * suffix = cropped-square (this server's own configured default, confirmed via `?ls`'s
+     * `"dcrop": "y"`). Pure URL construction, no network call — auth (`PW` header) is added by
+     * the caller when it actually fetches the image.
+     */
+    fun thumbnailUrl(serverUrl: String, remoteBasePath: String, relativePath: String): String? {
+        val baseUrl = serverUrl.toHttpUrlOrNull() ?: return null
+        return filePathUrl(baseUrl, remoteBasePath, relativePath)
+            .newBuilder()
+            .addQueryParameter("th", "j")
+            .build()
+            .toString()
+    }
+
+    /**
      * Deletes a file or folder (recursively, if a non-empty folder — confirmed against the real
      * server, copyparty does not refuse or require an extra confirmation param). Verified via
      * `HTTP DELETE` on the entry's own vpath, no trailing slash needed either way.

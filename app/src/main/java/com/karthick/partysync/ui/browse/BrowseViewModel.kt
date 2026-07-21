@@ -40,6 +40,8 @@ import javax.inject.Inject
 
 data class OpenFileRequest(val uri: Uri, val mimeType: String)
 
+enum class BrowseViewMode { LIST, GRID }
+
 data class BrowseUiState(
     val servers: List<ServerProfile> = emptyList(),
     val selectedServerId: Long? = null,
@@ -53,6 +55,7 @@ data class BrowseUiState(
     val showNewFolderDialog: Boolean = false,
     val newFolderName: String = "",
     val fileToOpen: OpenFileRequest? = null,
+    val viewMode: BrowseViewMode = BrowseViewMode.LIST,
 ) {
     val breadcrumbSegments: List<String>
         get() = currentPath.split('/').filter { it.isNotEmpty() }
@@ -203,6 +206,18 @@ class BrowseViewModel @Inject constructor(
     }
 
     fun dismissError() = _uiState.update { it.copy(error = null) }
+
+    fun toggleViewMode() = _uiState.update {
+        it.copy(viewMode = if (it.viewMode == BrowseViewMode.LIST) BrowseViewMode.GRID else BrowseViewMode.LIST)
+    }
+
+    /** URL + password pair for fetching a thumbnail, or null if no server is selected. */
+    fun thumbnailRequest(entry: RemoteEntry): Pair<String, String>? {
+        val server = currentServer() ?: return null
+        val path = joinPath(_uiState.value.currentPath, entry.name)
+        val url = copyPartyApi.thumbnailUrl(server.serverUrl, "", path) ?: return null
+        return url to server.password
+    }
 
     // --- Upload into current folder (reuses ShareUploadWorker as-is) ---
 
