@@ -33,6 +33,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.karthick.partysync.data.local.db.FolderMappingEntity
 import com.karthick.partysync.domain.model.MappingSyncStatus
 import com.karthick.partysync.domain.model.SyncMode
+import com.karthick.partysync.ui.navigation.PartySyncBottomBar
+import com.karthick.partysync.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +43,7 @@ fun HomeScreen(
     onEditMapping: (Long) -> Unit,
     onViewMappingDetail: (Long) -> Unit,
     onOpenSettings: () -> Unit,
+    onNavigateTab: (Screen) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val mappings by viewModel.mappings.collectAsState()
@@ -59,6 +62,7 @@ fun HomeScreen(
                 },
             )
         },
+        bottomBar = { PartySyncBottomBar(selected = Screen.Home, onNavigate = onNavigateTab) },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddMapping) {
                 Icon(Icons.Filled.Add, contentDescription = "Add folder")

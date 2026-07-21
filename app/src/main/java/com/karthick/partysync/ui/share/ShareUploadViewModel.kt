@@ -21,6 +21,7 @@ import com.karthick.partysync.domain.model.UploadSessionStatus
 import com.karthick.partysync.sync.worker.ShareUploadWorker
 import com.karthick.partysync.sync.worker.UploadControlReceiver
 import com.karthick.partysync.ui.common.RemoteFolderBrowserState
+import com.karthick.partysync.util.copyToCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -32,8 +33,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
-import java.util.UUID
 import javax.inject.Inject
 
 data class SharedFileInfo(val uri: Uri, val displayName: String, val size: Long)
@@ -203,14 +202,6 @@ class ShareUploadViewModel @Inject constructor(
         }
     }
 
-    private fun copyToCache(file: SharedFileInfo): File? = try {
-        val dir = File(context.cacheDir, "share_uploads").apply { mkdirs() }
-        val dest = File(dir, "${UUID.randomUUID()}_${file.displayName}")
-        context.contentResolver.openInputStream(file.uri)?.use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
-        }
-        if (dest.exists()) dest else null
-    } catch (e: IOException) {
-        null
-    }
+    private fun copyToCache(file: SharedFileInfo): File? =
+        copyToCache(context, file.uri, file.displayName, "share_uploads")
 }

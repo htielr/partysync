@@ -39,6 +39,7 @@ class SettingsRepositoryImpl @Inject constructor(
             KEY_INTERVAL_MINUTES,
             SettingsRepository.DEFAULT_INTERVAL_MINUTES,
         ),
+        lastBrowsedServerId = prefs.getLong(KEY_LAST_BROWSED_SERVER_ID, -1L).takeIf { it >= 0 },
     )
 
     override fun updateGlobalWifiOnly(wifiOnly: Boolean) {
@@ -52,9 +53,15 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { it.copy(syncIntervalMinutes = clamped) }
     }
 
+    override fun setLastBrowsedServerId(id: Long) {
+        prefs.edit().putLong(KEY_LAST_BROWSED_SERVER_ID, id).apply()
+        _settings.update { it.copy(lastBrowsedServerId = id) }
+    }
+
     private companion object {
         const val PREFS_FILE_NAME = "partysync_secure_prefs"
         const val KEY_WIFI_ONLY = "global_wifi_only"
         const val KEY_INTERVAL_MINUTES = "sync_interval_minutes"
+        const val KEY_LAST_BROWSED_SERVER_ID = "last_browsed_server_id"
     }
 }

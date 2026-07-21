@@ -5,9 +5,11 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
 import org.json.JSONArray
@@ -128,6 +130,101 @@ class CopyPartyApi @Inject constructor(
                 CopyPartyListResult.NetworkError(e)
             }
         }
+    }
+
+    /**
+     * Deletes a file or folder (recursively, if a non-empty folder — confirmed against the real
+     * server, copyparty does not refuse or require an extra confirmation param). Verified via
+     * `HTTP DELETE` on the entry's own vpath, no trailing slash needed either way.
+     */
+    suspend fun delete(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        relativePath: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val url = filePathUrl(baseUrl, remoteBasePath, relativePath)
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .delete()
+            .build()
+
+        return execute(request) { }
+    }
+
+    /**
+     * Renames or moves a file/folder. copyparty has no separate rename endpoint — a rename is
+     * just a move where only the last path segment changes: `POST` to the source vpath with a
+     * `move` query param carrying the full destination vpath from server root (verified: literal
+     * `/` separators, no percent-encoding needed — OkHttp's [HttpUrl.Builder.addQueryParameter]
+     * doesn't encode `/` either, and the real server accepts it as-is).
+     */
+    suspend fun move(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        sourceRelativePath: String,
+        destRelativePath: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val destVpath = "/" + (remoteBasePath.split('/') + destRelativePath.split('/'))
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
+
+        val url = filePathUrl(baseUrl, remoteBasePath, sourceRelativePath)
+            .newBuilder()
+            .addQueryParameter("move", destVpath)
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .post("".toRequestBody(null))
+            .build()
+
+        return execute(request) { }
+    }
+
+    /**
+     * Creates a new folder inside [parentRelativePath]. Verified against the real server:
+     * `POST multipart/form-data` to the parent directory's vpath (no trailing slash needed) with
+     * plain text fields `act=mkdir` and `name=<folder name>`.
+     */
+    suspend fun createFolder(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        parentRelativePath: String,
+        folderName: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val builder = baseUrl.newBuilder()
+        (remoteBasePath.split('/') + parentRelativePath.split('/'))
+            .filter { it.isNotEmpty() }
+            .forEach { segment -> builder.addPathSegment(segment) }
+        val url = builder.build()
+
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("act", "mkdir")
+            .addFormDataPart("name", folderName)
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .post(body)
+            .build()
+
+        return execute(request) { }
     }
 
     private fun parseListing(json: String): List<RemoteEntry> {

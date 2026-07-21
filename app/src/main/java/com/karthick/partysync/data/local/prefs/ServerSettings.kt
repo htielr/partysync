@@ -4,4 +4,5 @@ package com.karthick.partysync.data.local.prefs
 data class AppSyncSettings(
     val globalWifiOnly: Boolean = true,
     val syncIntervalMinutes: Int = SettingsRepository.DEFAULT_INTERVAL_MINUTES,
+    val lastBrowsedServerId: Long? = null,
 )

@@ -7,6 +7,7 @@ interface SettingsRepository {
 
     fun updateGlobalWifiOnly(wifiOnly: Boolean)
     fun updateSyncIntervalMinutes(minutes: Int)
+    fun setLastBrowsedServerId(id: Long)
 
     companion object {
         /** WorkManager's platform floor for PeriodicWorkRequest intervals. */
