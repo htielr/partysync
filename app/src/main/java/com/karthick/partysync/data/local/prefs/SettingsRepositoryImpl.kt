@@ -40,6 +40,9 @@ class SettingsRepositoryImpl @Inject constructor(
             SettingsRepository.DEFAULT_INTERVAL_MINUTES,
         ),
         lastBrowsedServerId = prefs.getLong(KEY_LAST_BROWSED_SERVER_ID, -1L).takeIf { it >= 0 },
+        themeMode = prefs.getString(KEY_THEME_MODE, null)?.let {
+            runCatching { AppThemeMode.valueOf(it) }.getOrNull()
+        } ?: AppThemeMode.SYSTEM,
     )
 
     override fun updateGlobalWifiOnly(wifiOnly: Boolean) {
@@ -58,10 +61,16 @@ class SettingsRepositoryImpl @Inject constructor(
         _settings.update { it.copy(lastBrowsedServerId = id) }
     }
 
+    override fun updateThemeMode(mode: AppThemeMode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+        _settings.update { it.copy(themeMode = mode) }
+    }
+
     private companion object {
         const val PREFS_FILE_NAME = "partysync_secure_prefs"
         const val KEY_WIFI_ONLY = "global_wifi_only"
         const val KEY_INTERVAL_MINUTES = "sync_interval_minutes"
         const val KEY_LAST_BROWSED_SERVER_ID = "last_browsed_server_id"
+        const val KEY_THEME_MODE = "theme_mode"
     }
 }

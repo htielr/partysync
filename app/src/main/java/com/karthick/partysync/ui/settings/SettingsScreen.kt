@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.karthick.partysync.data.local.prefs.AppThemeMode
 import com.karthick.partysync.data.local.prefs.SettingsRepository
 
 private val INTERVAL_PRESETS_MINUTES = listOf(15, 30, 60, 120, 360)
@@ -61,6 +62,13 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text("Appearance", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeModeOption("Light", AppThemeMode.LIGHT, settings.themeMode, viewModel::onThemeModeChanged)
+                ThemeModeOption("Dark", AppThemeMode.DARK, settings.themeMode, viewModel::onThemeModeChanged)
+                ThemeModeOption("System", AppThemeMode.SYSTEM, settings.themeMode, viewModel::onThemeModeChanged)
+            }
+
             Text("Servers", style = MaterialTheme.typography.titleMedium)
 
             Row(
@@ -115,6 +123,20 @@ fun SettingsScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ThemeModeOption(
+    label: String,
+    mode: AppThemeMode,
+    current: AppThemeMode,
+    onSelected: (AppThemeMode) -> Unit,
+) {
+    FilterChip(
+        selected = current == mode,
+        onClick = { onSelected(mode) },
+        label = { Text(label) },
+    )
 }
 
 private fun formatInterval(minutes: Int): String = when {

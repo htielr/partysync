@@ -152,6 +152,16 @@ class CopyPartyApi @Inject constructor(
     }
 
     /**
+     * Builds the raw file URL (no query params) for an entry — used to stream/display full-size
+     * images and videos directly (e.g. the in-app media viewer), as opposed to [thumbnailUrl]'s
+     * `?th=j` variant. Pure URL construction; auth (`PW` header) is added by the caller.
+     */
+    fun fileUrl(serverUrl: String, remoteBasePath: String, relativePath: String): String? {
+        val baseUrl = serverUrl.toHttpUrlOrNull() ?: return null
+        return filePathUrl(baseUrl, remoteBasePath, relativePath).toString()
+    }
+
+    /**
      * Deletes a file or folder (recursively, if a non-empty folder — confirmed against the real
      * server, copyparty does not refuse or require an extra confirmation param). Verified via
      * `HTTP DELETE` on the entry's own vpath, no trailing slash needed either way.

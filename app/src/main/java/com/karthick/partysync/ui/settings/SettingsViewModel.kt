@@ -2,6 +2,7 @@ package com.karthick.partysync.ui.settings
 
 import androidx.lifecycle.ViewModel
 import com.karthick.partysync.data.local.prefs.AppSyncSettings
+import com.karthick.partysync.data.local.prefs.AppThemeMode
 import com.karthick.partysync.data.local.prefs.SettingsRepository
 import com.karthick.partysync.sync.worker.SyncWorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +26,8 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.updateSyncIntervalMinutes(minutes)
         reschedulePeriodicSync()
     }
+
+    fun onThemeModeChanged(mode: AppThemeMode) = settingsRepository.updateThemeMode(mode)
 
     private fun reschedulePeriodicSync() {
         val current = settingsRepository.settings.value

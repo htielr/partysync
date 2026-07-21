@@ -8,3 +8,7 @@ private val VIDEO_EXTENSIONS = setOf("mp4", "mov", "mkv", "webm", "avi", "m4v", 
 /** Whether this entry is an image/video file the server can generate a real thumbnail for. */
 fun RemoteEntry.isThumbnailable(): Boolean =
     !isDirectory && name.substringAfterLast('.', "").lowercase() in (IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
+
+/** Whether this entry is a video file (vs. an image) — only meaningful when [isThumbnailable] is true. */
+fun RemoteEntry.isVideoFile(): Boolean =
+    name.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS

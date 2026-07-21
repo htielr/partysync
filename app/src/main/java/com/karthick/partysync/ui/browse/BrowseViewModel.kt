@@ -42,6 +42,17 @@ data class OpenFileRequest(val uri: Uri, val mimeType: String)
 
 enum class BrowseViewMode { LIST, GRID }
 
+enum class BrowseSortField { NAME, DATE, SIZE }
+
+/** Snapshot needed to page through the current folder's images/videos in the in-app viewer. */
+data class MediaViewerState(
+    val entries: List<RemoteEntry>,
+    val startIndex: Int,
+    val serverUrl: String,
+    val password: String,
+    val remoteBasePath: String,
+)
+
 data class BrowseUiState(
     val servers: List<ServerProfile> = emptyList(),
     val selectedServerId: Long? = null,
@@ -56,9 +67,24 @@ data class BrowseUiState(
     val newFolderName: String = "",
     val fileToOpen: OpenFileRequest? = null,
     val viewMode: BrowseViewMode = BrowseViewMode.LIST,
+    val mediaViewer: MediaViewerState? = null,
+    val sortField: BrowseSortField = BrowseSortField.NAME,
+    val sortAscending: Boolean = true,
 ) {
     val breadcrumbSegments: List<String>
         get() = currentPath.split('/').filter { it.isNotEmpty() }
+
+    /** Folders first, then files — each group sorted independently by [sortField]/[sortAscending]. */
+    val sortedEntries: List<RemoteEntry>
+        get() {
+            val comparator = when (sortField) {
+                BrowseSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it: RemoteEntry -> it.name }
+                BrowseSortField.DATE -> compareBy { it: RemoteEntry -> it.lastModifiedMillis }
+                BrowseSortField.SIZE -> compareBy { it: RemoteEntry -> it.size }
+            }.let { if (sortAscending) it else it.reversed() }
+            val (dirs, files) = entries.partition { it.isDirectory }
+            return dirs.sortedWith(comparator) + files.sortedWith(comparator)
+        }
 }
 
 @HiltViewModel
@@ -211,6 +237,12 @@ class BrowseViewModel @Inject constructor(
         it.copy(viewMode = if (it.viewMode == BrowseViewMode.LIST) BrowseViewMode.GRID else BrowseViewMode.LIST)
     }
 
+    /** Selecting the already-active field flips direction; selecting a new field resets to ascending. */
+    fun setSortField(field: BrowseSortField) = _uiState.update {
+        if (it.sortField == field) it.copy(sortAscending = !it.sortAscending)
+        else it.copy(sortField = field, sortAscending = true)
+    }
+
     /** URL + password pair for fetching a thumbnail, or null if no server is selected. */
     fun thumbnailRequest(entry: RemoteEntry): Pair<String, String>? {
         val server = currentServer() ?: return null
@@ -286,6 +318,34 @@ class BrowseViewModel @Inject constructor(
     }
 
     fun onFileOpened() = _uiState.update { it.copy(fileToOpen = null) }
+
+    // --- In-app media viewer ---
+
+    fun openMediaViewer(entry: RemoteEntry) {
+        val server = currentServer() ?: return
+        // Use the currently displayed (sorted) order so swiping matches what's on screen,
+        // not the server's raw listing order.
+        val mediaEntries = _uiState.value.sortedEntries.filter { it.isThumbnailable() }
+        val startIndex = mediaEntries.indexOf(entry)
+        if (startIndex < 0) return
+        _uiState.update {
+            it.copy(
+                mediaViewer = MediaViewerState(
+                    entries = mediaEntries,
+                    startIndex = startIndex,
+                    serverUrl = server.serverUrl,
+                    password = server.password,
+                    remoteBasePath = it.currentPath,
+                ),
+            )
+        }
+    }
+
+    fun closeMediaViewer() = _uiState.update { it.copy(mediaViewer = null) }
+
+    /** Builds a media entry's raw file URL, given the snapshot a [MediaViewerState] was opened with. */
+    fun mediaFileUrl(serverUrl: String, remoteBasePath: String, entryName: String): String? =
+        copyPartyApi.fileUrl(serverUrl, "", joinPath(remoteBasePath, entryName))
 
     private fun currentServer(): ServerProfile? =
         _uiState.value.servers.find { it.id == _uiState.value.selectedServerId }
