@@ -1,6 +1,7 @@
 package com.karthick.partysync.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -8,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.karthick.partysync.ui.addmapping.AddEditMappingScreen
+import com.karthick.partysync.ui.browse.BrowseScreen
 import com.karthick.partysync.ui.home.HomeScreen
 import com.karthick.partysync.ui.mappingdetail.MappingDetailScreen
 import com.karthick.partysync.ui.servers.AddEditServerScreen
@@ -16,6 +18,14 @@ import com.karthick.partysync.ui.settings.SettingsScreen
 
 @Composable
 fun PartySyncNavHost(navController: NavHostController = rememberNavController()) {
+    val onNavigateTab: (Screen) -> Unit = { screen ->
+        navController.navigate(screen.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     NavHost(navController = navController, startDestination = Screen.Home.route) {
         composable(Screen.Home.route) {
             HomeScreen(
@@ -23,7 +33,11 @@ fun PartySyncNavHost(navController: NavHostController = rememberNavController())
                 onEditMapping = { id -> navController.navigate(Screen.AddEditMapping.routeFor(id)) },
                 onViewMappingDetail = { id -> navController.navigate(Screen.MappingDetail.routeFor(id)) },
                 onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateTab = onNavigateTab,
             )
+        }
+        composable(Screen.Browse.route) {
+            BrowseScreen(onNavigateTab = onNavigateTab)
         }
         composable(Screen.Settings.route) {
             SettingsScreen(

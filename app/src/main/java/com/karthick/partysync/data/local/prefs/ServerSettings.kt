@@ -1,7 +1,11 @@
 package com.karthick.partysync.data.local.prefs
 
+enum class AppThemeMode { LIGHT, DARK, SYSTEM }
+
 /** App-wide sync scheduling settings (per-server credentials live in [ServerRepository]). */
 data class AppSyncSettings(
     val globalWifiOnly: Boolean = true,
     val syncIntervalMinutes: Int = SettingsRepository.DEFAULT_INTERVAL_MINUTES,
+    val lastBrowsedServerId: Long? = null,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
 )

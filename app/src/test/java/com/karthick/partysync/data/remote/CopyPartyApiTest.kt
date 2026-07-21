@@ -134,4 +134,95 @@ class CopyPartyApiTest {
         assertTrue(result is CopyPartyListResult.HttpError)
         assertEquals(403, (result as CopyPartyListResult.HttpError).code)
     }
+
+    @Test
+    fun `delete sends DELETE with PW header and correct path for a file`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200))
+
+        val result = api.delete(serverUrl, "s3cret", "/backups/phone", "notes.txt")
+
+        assertTrue(result is CopyPartyResult.Success)
+
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("s3cret", request.getHeader("PW"))
+        assertTrue(request.path?.startsWith("/backups/phone/notes.txt") == true)
+    }
+
+    @Test
+    fun `delete sends DELETE with correct path for a folder`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200))
+
+        val result = api.delete(serverUrl, "s3cret", "/backups/phone", "old dir")
+
+        assertTrue(result is CopyPartyResult.Success)
+
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertTrue(request.path?.startsWith("/backups/phone/old%20dir") == true)
+    }
+
+    @Test
+    fun `delete classifies a 403 as an HttpError`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(403))
+
+        val result = api.delete(serverUrl, "s3cret", "/x", "a.txt")
+
+        assertTrue(result is CopyPartyResult.HttpError)
+        assertEquals(403, (result as CopyPartyResult.HttpError).code)
+    }
+
+    @Test
+    fun `move sends POST with move query param containing the destination vpath`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201))
+
+        val result = api.move(serverUrl, "s3cret", "/backups/phone", "old.txt", "new.txt")
+
+        assertTrue(result is CopyPartyResult.Success)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("s3cret", request.getHeader("PW"))
+        assertTrue(request.path?.startsWith("/backups/phone/old.txt") == true)
+        assertTrue(request.path?.contains("move=%2Fbackups%2Fphone%2Fnew.txt") == true)
+    }
+
+    @Test
+    fun `move classifies a 500 as an HttpError`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        val result = api.move(serverUrl, "s3cret", "/x", "old.txt", "new.txt")
+
+        assertTrue(result is CopyPartyResult.HttpError)
+        assertEquals(500, (result as CopyPartyResult.HttpError).code)
+    }
+
+    @Test
+    fun `createFolder sends multipart POST with act=mkdir and name fields to the parent path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201))
+
+        val result = api.createFolder(serverUrl, "s3cret", "/backups/phone", "", "New Folder")
+
+        assertTrue(result is CopyPartyResult.Success)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("s3cret", request.getHeader("PW"))
+        assertTrue(request.path?.startsWith("/backups/phone") == true)
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("name=\"act\""))
+        assertTrue(body.contains("mkdir"))
+        assertTrue(body.contains("name=\"name\""))
+        assertTrue(body.contains("New Folder"))
+    }
+
+    @Test
+    fun `createFolder classifies a 405 name-collision as an HttpError`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(405))
+
+        val result = api.createFolder(serverUrl, "s3cret", "/x", "", "dup")
+
+        assertTrue(result is CopyPartyResult.HttpError)
+        assertEquals(405, (result as CopyPartyResult.HttpError).code)
+    }
 }

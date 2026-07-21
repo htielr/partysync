@@ -5,9 +5,11 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
 import org.json.JSONArray
@@ -128,6 +130,130 @@ class CopyPartyApi @Inject constructor(
                 CopyPartyListResult.NetworkError(e)
             }
         }
+    }
+
+    /**
+     * Builds a thumbnail URL for an entry via copyparty's `?th=j` endpoint (verified against the
+     * real server and `copyparty/web/browser.js`'s own grid-view thumbnail construction): works
+     * uniformly on any path — images get a real thumbnail, videos get a frame-extract thumbnail,
+     * everything else gets a generic icon. Callers only invoke this for entries they've already
+     * decided are image/video files (see `ui/browse/ThumbnailSupport.kt`). `j` = JPEG, no crop
+     * suffix = cropped-square (this server's own configured default, confirmed via `?ls`'s
+     * `"dcrop": "y"`). Pure URL construction, no network call — auth (`PW` header) is added by
+     * the caller when it actually fetches the image.
+     */
+    fun thumbnailUrl(serverUrl: String, remoteBasePath: String, relativePath: String): String? {
+        val baseUrl = serverUrl.toHttpUrlOrNull() ?: return null
+        return filePathUrl(baseUrl, remoteBasePath, relativePath)
+            .newBuilder()
+            .addQueryParameter("th", "j")
+            .build()
+            .toString()
+    }
+
+    /**
+     * Builds the raw file URL (no query params) for an entry — used to stream/display full-size
+     * images and videos directly (e.g. the in-app media viewer), as opposed to [thumbnailUrl]'s
+     * `?th=j` variant. Pure URL construction; auth (`PW` header) is added by the caller.
+     */
+    fun fileUrl(serverUrl: String, remoteBasePath: String, relativePath: String): String? {
+        val baseUrl = serverUrl.toHttpUrlOrNull() ?: return null
+        return filePathUrl(baseUrl, remoteBasePath, relativePath).toString()
+    }
+
+    /**
+     * Deletes a file or folder (recursively, if a non-empty folder — confirmed against the real
+     * server, copyparty does not refuse or require an extra confirmation param). Verified via
+     * `HTTP DELETE` on the entry's own vpath, no trailing slash needed either way.
+     */
+    suspend fun delete(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        relativePath: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val url = filePathUrl(baseUrl, remoteBasePath, relativePath)
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .delete()
+            .build()
+
+        return execute(request) { }
+    }
+
+    /**
+     * Renames or moves a file/folder. copyparty has no separate rename endpoint — a rename is
+     * just a move where only the last path segment changes: `POST` to the source vpath with a
+     * `move` query param carrying the full destination vpath from server root (verified: literal
+     * `/` separators, no percent-encoding needed — OkHttp's [HttpUrl.Builder.addQueryParameter]
+     * doesn't encode `/` either, and the real server accepts it as-is).
+     */
+    suspend fun move(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        sourceRelativePath: String,
+        destRelativePath: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val destVpath = "/" + (remoteBasePath.split('/') + destRelativePath.split('/'))
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
+
+        val url = filePathUrl(baseUrl, remoteBasePath, sourceRelativePath)
+            .newBuilder()
+            .addQueryParameter("move", destVpath)
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .post("".toRequestBody(null))
+            .build()
+
+        return execute(request) { }
+    }
+
+    /**
+     * Creates a new folder inside [parentRelativePath]. Verified against the real server:
+     * `POST multipart/form-data` to the parent directory's vpath (no trailing slash needed) with
+     * plain text fields `act=mkdir` and `name=<folder name>`.
+     */
+    suspend fun createFolder(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        parentRelativePath: String,
+        folderName: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val builder = baseUrl.newBuilder()
+        (remoteBasePath.split('/') + parentRelativePath.split('/'))
+            .filter { it.isNotEmpty() }
+            .forEach { segment -> builder.addPathSegment(segment) }
+        val url = builder.build()
+
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("act", "mkdir")
+            .addFormDataPart("name", folderName)
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .post(body)
+            .build()
+
+        return execute(request) { }
     }
 
     private fun parseListing(json: String): List<RemoteEntry> {
