@@ -198,6 +198,31 @@ class CopyPartyApiTest {
     }
 
     @Test
+    fun `copy sends POST with copy query param containing the destination vpath`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201))
+
+        val result = api.copy(serverUrl, "s3cret", "/backups/phone", "old.txt", "new.txt")
+
+        assertTrue(result is CopyPartyResult.Success)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("s3cret", request.getHeader("PW"))
+        assertTrue(request.path?.startsWith("/backups/phone/old.txt") == true)
+        assertTrue(request.path?.contains("copy=%2Fbackups%2Fphone%2Fnew.txt") == true)
+    }
+
+    @Test
+    fun `copy classifies a 500 as an HttpError`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        val result = api.copy(serverUrl, "s3cret", "/x", "old.txt", "new.txt")
+
+        assertTrue(result is CopyPartyResult.HttpError)
+        assertEquals(500, (result as CopyPartyResult.HttpError).code)
+    }
+
+    @Test
     fun `createFolder sends multipart POST with act=mkdir and name fields to the parent path`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(201))
 
