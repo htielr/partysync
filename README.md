@@ -12,7 +12,10 @@ PartySync lets you mirror folders on your phone to your own server automatically
 - **Chunked resumable uploads (up2k)** — share-uploads use copyparty's real `up2k` protocol: hashed chunks, true resume after interruption, and a progress notification with pause/resume/cancel actions.
 - **Interactive server folder browser** — browse the server's actual folder tree live (instead of typing a path by hand) when choosing where to upload or sync, on both the share screen and the add/edit folder-mapping screen.
 - **Full server file browser** — a dedicated "Browse" tab for navigating the whole server tree independent of any folder mapping: breadcrumb navigation, list/grid view toggle with real image/video/folder-cover thumbnails, sorting by name/date/size, rename/delete/new-folder, uploading into the current folder, and downloading a file to hand off via Android's open-with chooser.
-- **In-app media viewer** — tapping an image or video opens it in-app instead of an external app, with swipe navigation between the images/videos in the current folder, pinch-to-zoom/pan on photos, and full playback controls on video.
+- **Multi-select with cut/copy/paste/move** — long-press to select multiple files/folders, then cut, copy, "Move to…" (folder picker), rename, or batch-delete from a compact selection top bar. A persistent clipboard bar appears whenever something's cut or copied, so paste is never hidden behind a menu.
+- **Zip and unzip** — zip a selection (files and/or whole folders, recursively) into a named archive uploaded to the current folder, or unzip a `.zip` already on the server into a new subfolder — all without a round trip through a desktop.
+- **Share files from the browser** — share one or more selected files out to any other Android app via the standard share sheet.
+- **In-app media viewer** — tapping an image or video opens it in-app instead of an external app, with swipe navigation (following the current sort order) between the images/videos in the current folder, pinch-to-zoom/pan on photos, and full playback controls on video.
 - **Light/dark/system theme** — switchable in Settings, applied instantly and persisted across restarts.
 
 ## Requirements

@@ -221,6 +221,39 @@ class CopyPartyApi @Inject constructor(
     }
 
     /**
+     * Copies a file/folder — structurally identical to [move] (verified against the real
+     * server): `POST` to the source vpath with a `copy` query param carrying the full destination
+     * vpath from server root. Both source and copy exist afterward.
+     */
+    suspend fun copy(
+        serverUrl: String,
+        password: String,
+        remoteBasePath: String,
+        sourceRelativePath: String,
+        destRelativePath: String,
+    ): CopyPartyResult {
+        val baseUrl = serverUrl.toHttpUrlOrNull()
+            ?: return CopyPartyResult.NetworkError(IOException("Invalid server URL: $serverUrl"))
+
+        val destVpath = "/" + (remoteBasePath.split('/') + destRelativePath.split('/'))
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
+
+        val url = filePathUrl(baseUrl, remoteBasePath, sourceRelativePath)
+            .newBuilder()
+            .addQueryParameter("copy", destVpath)
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("PW", password)
+            .post("".toRequestBody(null))
+            .build()
+
+        return execute(request) { }
+    }
+
+    /**
      * Creates a new folder inside [parentRelativePath]. Verified against the real server:
      * `POST multipart/form-data` to the parent directory's vpath (no trailing slash needed) with
      * plain text fields `act=mkdir` and `name=<folder name>`.
