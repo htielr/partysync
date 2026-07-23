@@ -46,26 +46,28 @@ jobs:
       if: always()
       run: rm -f release.jks
 
-    # Matches whichever filename Gradle produced: app-release.apk if the KEYSTORE_* secrets
-    # are configured, app-release-unsigned.apk otherwise (e.g. secrets not set up yet).
-    - name: Upload release APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release
-        path: app/build/outputs/apk/release/*.apk
-        if-no-files-found: error
-
     - name: Read app version
-      if: github.ref == 'refs/heads/main'
       id: version
       run: |
         VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    # Matches whichever filename Gradle produced: app-release.apk if the KEYSTORE_* secrets
+    # are configured, app-release-unsigned.apk otherwise (e.g. secrets not set up yet).
+    - name: Rename release APK
+      run: mv app/build/outputs/apk/release/*.apk "app/build/outputs/apk/release/partysync-${{ steps.version.outputs.version }}.apk"
+
+    - name: Upload release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: partysync-${{ steps.version.outputs.version }}
+        path: app/build/outputs/apk/release/partysync-${{ steps.version.outputs.version }}.apk
+        if-no-files-found: error
 
     - name: Create GitHub Release
       if: github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.version.outputs.version }}
-        files: app/build/outputs/apk/release/*.apk
+        files: app/build/outputs/apk/release/partysync-${{ steps.version.outputs.version }}.apk
         generate_release_notes: true
