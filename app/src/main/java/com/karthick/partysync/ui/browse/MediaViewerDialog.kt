@@ -11,6 +11,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +31,12 @@ import coil.request.ImageRequest
 import com.karthick.partysync.data.remote.RemoteEntry
 
 @Composable
-fun MediaViewerDialog(state: MediaViewerState, urlForEntry: (RemoteEntry) -> String?, onDismiss: () -> Unit) {
+fun MediaViewerDialog(
+    state: MediaViewerState,
+    urlForEntry: (RemoteEntry) -> String?,
+    onDismiss: () -> Unit,
+    onSave: (RemoteEntry) -> Unit,
+) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BackHandler(enabled = true, onBack = onDismiss)
 
@@ -71,7 +77,11 @@ fun MediaViewerDialog(state: MediaViewerState, urlForEntry: (RemoteEntry) -> Str
                     "${pagerState.currentPage + 1} / ${state.entries.size}",
                     color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(end = 4.dp),
                 )
+                IconButton(onClick = { onSave(state.entries[pagerState.currentPage]) }) {
+                    Icon(Icons.Filled.Download, contentDescription = "Save to device", tint = Color.White)
+                }
             }
         }
     }

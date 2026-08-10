@@ -29,6 +29,7 @@ import com.karthick.partysync.sync.worker.ShareUploadWorker
 import com.karthick.partysync.sync.worker.UploadControlReceiver
 import com.karthick.partysync.ui.common.RemoteFolderBrowserState
 import com.karthick.partysync.util.copyToCache
+import com.karthick.partysync.util.saveToDownloads
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ data class BrowseUiState(
     val newFolderName: String = "",
     val fileToOpen: OpenFileRequest? = null,
     val shareRequest: ShareRequest? = null,
+    val saveMessage: String? = null,
     val viewMode: BrowseViewMode = BrowseViewMode.LIST,
     val mediaViewer: MediaViewerState? = null,
     val sortField: BrowseSortField = BrowseSortField.NAME,
@@ -498,6 +500,54 @@ class BrowseViewModel @Inject constructor(
     }
 
     fun onShareHandled() = _uiState.update { it.copy(shareRequest = null) }
+
+    // --- Save to device (Downloads/PartySync) — selection top bar action and media viewer ---
+
+    fun saveSelectionToDevice() {
+        val server = currentServer() ?: return
+        val path = _uiState.value.currentPath
+        val entries = _uiState.value.entries.filter { it.name in selectedEntryNames() && !it.isDirectory }
+        _uiState.update { it.copy(selectedEntries = emptySet()) }
+        if (entries.isEmpty()) return
+        viewModelScope.launch {
+            val savedCount = entries.count { entry -> saveEntryToDownloads(server, joinPath(path, entry.name), entry) }
+            val message = when (savedCount) {
+                0 -> "Couldn't save to Downloads"
+                entries.size -> if (savedCount == 1) "Saved ${entries.single().name} to Downloads" else "Saved $savedCount files to Downloads"
+                else -> "Saved $savedCount of ${entries.size} files to Downloads"
+            }
+            _uiState.update { it.copy(saveMessage = message) }
+        }
+    }
+
+    fun saveMediaViewerEntryToDevice(entry: RemoteEntry) {
+        val viewer = _uiState.value.mediaViewer ?: return
+        val server = currentServer() ?: return
+        viewModelScope.launch {
+            val saved = saveEntryToDownloads(server, joinPath(viewer.remoteBasePath, entry.name), entry)
+            val message = if (saved) "Saved ${entry.name} to Downloads" else "Couldn't save to Downloads"
+            _uiState.update { it.copy(saveMessage = message) }
+        }
+    }
+
+    fun onSaveMessageShown() = _uiState.update { it.copy(saveMessage = null) }
+
+    /** Streams one entry directly from the server into Downloads/PartySync — no cache copy. */
+    private suspend fun saveEntryToDownloads(server: ServerProfile, path: String, entry: RemoteEntry): Boolean {
+        var saved = false
+        val result = try {
+            copyPartyApi.downloadFile(server.serverUrl, server.password, "", path) { input ->
+                saved = saveToDownloads(context, entry.name) { output -> input.copyTo(output) }
+            }
+        } catch (e: IOException) {
+            CopyPartyResult.NetworkError(e)
+        }
+        if (result !is CopyPartyResult.Success) {
+            showMutationError(result)
+            return false
+        }
+        return saved
+    }
 
     /** Downloads one entry into a fresh cache subdirectory, returning its shareable URI + MIME type. */
     private suspend fun downloadEntryToCache(server: ServerProfile, path: String, entry: RemoteEntry): Pair<Uri, String>? {
