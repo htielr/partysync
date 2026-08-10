@@ -2,11 +2,15 @@
 
 package com.karthick.partysync.ui.browse
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -44,11 +48,13 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.UploadFile
@@ -61,8 +67,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -104,6 +114,8 @@ fun BrowseScreen(
     val context = LocalContext.current
     var fabMenuExpanded by remember { mutableStateOf(false) }
     var showServerSheet by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val requestWithStoragePermission = rememberStoragePermissionGate(context)
 
     BackHandler(enabled = uiState.isSelectionMode) {
         viewModel.clearSelection()
@@ -156,14 +168,35 @@ fun BrowseScreen(
         viewModel.onShareHandled()
     }
 
+    LaunchedEffect(uiState.saveMessage) {
+        val message = uiState.saveMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.onSaveMessageShown()
+    }
+
     Scaffold(
-        topBar = { BrowseTopBar(uiState = uiState, viewModel = viewModel, onOpenServerSheet = { showServerSheet = true }) },
+        topBar = {
+            BrowseTopBar(
+                uiState = uiState,
+                viewModel = viewModel,
+                onOpenServerSheet = { showServerSheet = true },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            androidx.compose.foundation.layout.Column {
-                if (uiState.clipboard != null) {
-                    ClipboardBar(uiState = uiState, viewModel = viewModel)
+            if (uiState.isSelectionMode) {
+                SelectionActionBar(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onSaveSelection = { requestWithStoragePermission(viewModel::saveSelectionToDevice) },
+                )
+            } else {
+                androidx.compose.foundation.layout.Column {
+                    if (uiState.clipboard != null) {
+                        ClipboardBar(uiState = uiState, viewModel = viewModel)
+                    }
+                    PartySyncBottomBar(selected = Screen.Browse, onNavigate = onNavigateTab)
                 }
-                PartySyncBottomBar(selected = Screen.Browse, onNavigate = onNavigateTab)
             }
         },
         floatingActionButton = {
@@ -321,13 +354,43 @@ fun BrowseScreen(
             state = mediaViewer,
             urlForEntry = { entry -> viewModel.mediaFileUrl(mediaViewer.serverUrl, mediaViewer.remoteBasePath, entry.name) },
             onDismiss = viewModel::closeMediaViewer,
+            onSave = { entry -> requestWithStoragePermission { viewModel.saveMediaViewerEntryToDevice(entry) } },
         )
+    }
+}
+
+/**
+ * Gates a save-to-device action behind WRITE_EXTERNAL_STORAGE on API 26-28 (runtime permission
+ * required for writing into the public Downloads folder there); API 29+ needs no permission
+ * since MediaStore inserts are scoped to the app. Returns a function that runs [action]
+ * immediately if already permitted, or requests the permission first and runs it on grant.
+ */
+@Composable
+private fun rememberStoragePermissionGate(context: android.content.Context): (() -> Unit) -> Unit {
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) pendingAction?.invoke()
+        pendingAction = null
+    }
+    return { action ->
+        val hasPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            action()
+        } else {
+            pendingAction = action
+            launcher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BrowseTopBar(uiState: BrowseUiState, viewModel: BrowseViewModel, onOpenServerSheet: () -> Unit) {
+private fun BrowseTopBar(
+    uiState: BrowseUiState,
+    viewModel: BrowseViewModel,
+    onOpenServerSheet: () -> Unit,
+) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
     Surface(tonalElevation = 2.dp) {
@@ -344,49 +407,11 @@ private fun BrowseTopBar(uiState: BrowseUiState, viewModel: BrowseViewModel, onO
                     Icon(Icons.Filled.Close, contentDescription = "Cancel selection")
                 }
                 Text(
-                    "${uiState.selectedEntries.size}",
+                    "${uiState.selectedEntries.size} selected",
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 4.dp, end = 8.dp),
                 )
-                val singleSelected = uiState.entries.find { it.name in uiState.selectedEntries }
-                    .takeIf { uiState.selectedEntries.size == 1 }
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (singleSelected != null) {
-                        IconButton(onClick = { viewModel.requestRename(singleSelected) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Rename")
-                        }
-                        if (viewModel.canUnzip(singleSelected)) {
-                            IconButton(onClick = { viewModel.requestUnzip(singleSelected) }) {
-                                Icon(Icons.Filled.FolderZip, contentDescription = "Unzip")
-                            }
-                        }
-                    }
-                    IconButton(onClick = viewModel::requestZipSelection) {
-                        Icon(Icons.Filled.Archive, contentDescription = "Zip")
-                    }
-                    IconButton(onClick = viewModel::cutSelection) {
-                        Icon(Icons.Filled.ContentCut, contentDescription = "Cut")
-                    }
-                    IconButton(onClick = viewModel::copySelection) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy")
-                    }
-                    IconButton(onClick = viewModel::openMoveTargetPicker) {
-                        Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Move to")
-                    }
-                    IconButton(onClick = viewModel::shareSelection) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share")
-                    }
-                    IconButton(onClick = viewModel::requestDeleteSelection) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Delete")
-                    }
-                }
             } else {
                 val title = uiState.breadcrumbSegments.lastOrNull() ?: "Browse"
                 Text(
@@ -421,6 +446,88 @@ private fun BrowseTopBar(uiState: BrowseUiState, viewModel: BrowseViewModel, onO
                 }
             }
         }
+    }
+}
+
+/**
+ * Replaces the bottom nav bar while a selection is active (Google Files' pattern) — full-width
+ * labeled actions instead of cramming icons into the top bar. Rename/Zip/Unzip/Save are less
+ * frequently used than Cut/Copy/Move/Share/Delete, so they live behind "More" instead of each
+ * getting their own slot.
+ */
+@Composable
+private fun SelectionActionBar(uiState: BrowseUiState, viewModel: BrowseViewModel, onSaveSelection: () -> Unit) {
+    var moreMenuExpanded by remember { mutableStateOf(false) }
+    val singleSelected = uiState.entries.find { it.name in uiState.selectedEntries }
+        .takeIf { uiState.selectedEntries.size == 1 }
+
+    NavigationBar {
+        NavigationBarItem(
+            selected = false,
+            onClick = viewModel::cutSelection,
+            icon = { Icon(Icons.Filled.ContentCut, contentDescription = null) },
+            label = { Text("Cut") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = viewModel::copySelection,
+            icon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+            label = { Text("Copy") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = viewModel::openMoveTargetPicker,
+            icon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = null) },
+            label = { Text("Move") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = viewModel::shareSelection,
+            icon = { Icon(Icons.Filled.Share, contentDescription = null) },
+            label = { Text("Share") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = viewModel::requestDeleteSelection,
+            icon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+            label = { Text("Delete") },
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = { moreMenuExpanded = true },
+            icon = {
+                Box {
+                    Icon(Icons.Filled.MoreVert, contentDescription = null)
+                    DropdownMenu(expanded = moreMenuExpanded, onDismissRequest = { moreMenuExpanded = false }) {
+                        if (singleSelected != null) {
+                            DropdownMenuItem(
+                                text = { Text("Rename") },
+                                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                                onClick = { moreMenuExpanded = false; viewModel.requestRename(singleSelected) },
+                            )
+                            if (viewModel.canUnzip(singleSelected)) {
+                                DropdownMenuItem(
+                                    text = { Text("Unzip") },
+                                    leadingIcon = { Icon(Icons.Filled.FolderZip, contentDescription = null) },
+                                    onClick = { moreMenuExpanded = false; viewModel.requestUnzip(singleSelected) },
+                                )
+                            }
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Zip") },
+                            leadingIcon = { Icon(Icons.Filled.Archive, contentDescription = null) },
+                            onClick = { moreMenuExpanded = false; viewModel.requestZipSelection() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Save to device") },
+                            leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                            onClick = { moreMenuExpanded = false; onSaveSelection() },
+                        )
+                    }
+                }
+            },
+            label = { Text("More") },
+        )
     }
 }
 
