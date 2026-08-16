@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -91,6 +92,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -765,63 +767,91 @@ private fun EntryRow(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    Row(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        tonalElevation = if (isSelected) 4.dp else 1.dp,
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .let { if (isSelected) it.background(MaterialTheme.colorScheme.primaryContainer) else it }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        val fallbackIcon = if (entry.isDirectory) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (thumbnailRequest != null && (entry.isDirectory || entry.isThumbnailable())) {
-                val (url, password) = thumbnailRequest
-                SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(url)
-                        .setHeader("PW", password)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (painter.state is AsyncImagePainter.State.Error) {
-                        Icon(
-                            fallbackIcon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    } else {
-                        SubcomposeAsyncImageContent()
-                    }
-                }
+            val fallbackIcon = getEntryIcon(entry)
+            val iconTint = if (entry.isDirectory) {
+                MaterialTheme.colorScheme.primary
             } else {
-                Icon(
-                    fallbackIcon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(26.dp),
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (entry.isDirectory) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (thumbnailRequest != null && (entry.isDirectory || entry.isThumbnailable())) {
+                    val (url, password) = thumbnailRequest
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(url)
+                            .setHeader("PW", password)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        if (painter.state is AsyncImagePainter.State.Error) {
+                            Icon(
+                                fallbackIcon,
+                                contentDescription = null,
+                                tint = iconTint,
+                                modifier = Modifier.size(26.dp),
+                            )
+                        } else {
+                            SubcomposeAsyncImageContent()
+                        }
+                    }
+                } else {
+                    Icon(
+                        fallbackIcon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                if (isSelected) SelectionOverlay()
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp),
+            ) {
+                Text(
+                    entry.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (isSelected) SelectionOverlay()
         }
-        Text(
-            entry.name,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 14.dp),
-        )
     }
 }
 
@@ -835,66 +865,97 @@ private fun GridEntryCell(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    androidx.compose.foundation.layout.Column(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        tonalElevation = if (isSelected) 4.dp else 1.dp,
         modifier = modifier
             .padding(4.dp)
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        val fallbackIcon = if (entry.isDirectory) Icons.Filled.Folder else Icons.AutoMirrored.Filled.InsertDriveFile
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            if (thumbnailRequest != null && (entry.isDirectory || entry.isThumbnailable())) {
-                val (url, password) = thumbnailRequest
-                SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(url)
-                        .setHeader("PW", password)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = entry.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (painter.state is AsyncImagePainter.State.Error) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(
-                                fallbackIcon,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.fillMaxSize(0.4f),
-                            )
+        Column {
+            val fallbackIcon = getEntryIcon(entry)
+            val iconTint = if (entry.isDirectory) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .background(
+                        if (entry.isDirectory) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ),
+            ) {
+                if (thumbnailRequest != null && (entry.isDirectory || entry.isThumbnailable())) {
+                    val (url, password) = thumbnailRequest
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(url)
+                            .setHeader("PW", password)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = entry.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        if (painter.state is AsyncImagePainter.State.Error) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    fallbackIcon,
+                                    contentDescription = null,
+                                    tint = iconTint,
+                                    modifier = Modifier.fillMaxSize(0.4f),
+                                )
+                            }
+                        } else {
+                            SubcomposeAsyncImageContent()
                         }
-                    } else {
-                        SubcomposeAsyncImageContent()
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            fallbackIcon,
+                            contentDescription = null,
+                            tint = iconTint,
+                            modifier = Modifier.fillMaxSize(0.4f),
+                        )
                     }
                 }
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        fallbackIcon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxSize(0.4f),
-                    )
-                }
+                if (isSelected) SelectionOverlay()
             }
-            if (isSelected) SelectionOverlay()
+            Text(
+                entry.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            )
         }
-        Text(
-            entry.name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-        )
+    }
+}
+
+private fun getEntryIcon(entry: RemoteEntry): androidx.compose.ui.graphics.vector.ImageVector {
+    if (entry.isDirectory) return Icons.Filled.Folder
+    val ext = entry.name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "zip", "rar", "tar", "gz", "7z" -> Icons.Filled.FolderZip
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
