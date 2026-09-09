@@ -97,6 +97,7 @@ class ChatRelayWebSocketClient @Inject constructor(
                 filename = obj.optNullableString("filename"),
             )
             "status" -> ChatEvent.Status(obj.optString("text", ""))
+            "cleared" -> ChatEvent.Cleared
             else -> null
         }
     } catch (e: org.json.JSONException) {

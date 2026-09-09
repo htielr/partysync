@@ -34,6 +34,7 @@ data class ChatUiState(
     val selectedRoom: String = CHAT_ROOM_VAULT,
     val messages: List<ChatMessage> = emptyList(),
     val isSending: Boolean = false,
+    val isClearing: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -105,6 +106,10 @@ class ChatViewModel @Inject constructor(
     // thread - MutableStateFlow.update {} does an atomic compare-and-set retry, safe to call
     // from any thread, unlike a plain read-modify-write of `.value`.
     private fun appendLive(room: String, event: ChatEvent) {
+        if (event is ChatEvent.Cleared) {
+            _uiState.update { if (it.selectedRoom == room) it.copy(messages = emptyList()) else it }
+            return
+        }
         val newMessage = when (event) {
             is ChatEvent.NewMessage -> ChatMessage(
                 id = event.id,
@@ -119,8 +124,29 @@ class ChatViewModel @Inject constructor(
                 kind = "status",
                 content = event.text,
             )
+            is ChatEvent.Cleared -> return // handled above
         }
         _uiState.update { if (it.selectedRoom == room) it.copy(messages = it.messages + newMessage) else it }
+    }
+
+    /** Deletes the current room's history on the server - irreversible, affects every viewer. */
+    fun clearHistory() {
+        val config = _uiState.value.config ?: return
+        val room = _uiState.value.selectedRoom
+        _uiState.update { it.copy(isClearing = true) }
+        viewModelScope.launch {
+            when (val result = chatRelayApi.clearHistory(config.baseUrl, config.apiKey, room)) {
+                is ChatRelayResult.Success -> _uiState.update {
+                    if (it.selectedRoom == room) it.copy(isClearing = false, messages = emptyList()) else it.copy(isClearing = false)
+                }
+                is ChatRelayResult.HttpError -> _uiState.update {
+                    it.copy(isClearing = false, errorMessage = result.message ?: "Clear failed (HTTP ${result.code})")
+                }
+                is ChatRelayResult.NetworkError -> _uiState.update {
+                    it.copy(isClearing = false, errorMessage = result.exception.message)
+                }
+            }
+        }
     }
 
     fun sendText(text: String) {

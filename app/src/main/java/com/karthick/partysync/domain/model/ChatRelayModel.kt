@@ -22,4 +22,7 @@ sealed class ChatEvent {
     ) : ChatEvent()
 
     data class Status(val text: String) : ChatEvent()
+
+    /** Someone (any client) cleared this room's history - broadcast so every live viewer clears too. */
+    data object Cleared : ChatEvent()
 }

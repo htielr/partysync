@@ -105,6 +105,19 @@ class ChatRelayApi @Inject constructor(
         return execute(request)
     }
 
+    suspend fun clearHistory(baseUrl: String, apiKey: String, room: String): ChatRelayResult {
+        val url = roomUrl(baseUrl, room, "history")
+            ?: return ChatRelayResult.NetworkError(IOException("Invalid server URL: $baseUrl"))
+
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $apiKey")
+            .delete()
+            .build()
+
+        return execute(request)
+    }
+
     private fun roomUrl(baseUrl: String, room: String, action: String) =
         normalizeChatRelayBaseUrl(baseUrl).toHttpUrlOrNull()?.newBuilder()
             ?.addPathSegments("api/webhook")

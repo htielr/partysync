@@ -20,12 +20,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -72,6 +74,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var showConfigDialog by remember { mutableStateOf(false) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
@@ -90,6 +93,12 @@ fun ChatScreen(
                 title = { Text("Chat Relay") },
                 actions = {
                     if (uiState.config != null) {
+                        IconButton(
+                            onClick = { showClearConfirmDialog = true },
+                            enabled = uiState.messages.isNotEmpty() && !uiState.isClearing,
+                        ) {
+                            Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear chat history")
+                        }
                         IconButton(onClick = { showConfigDialog = true }) {
                             Icon(Icons.Filled.Settings, contentDescription = "Configure Chat Relay")
                         }
@@ -147,6 +156,31 @@ fun ChatScreen(
                 viewModel.saveConfig(baseUrl, apiKey)
                 showConfigDialog = false
             },
+        )
+    }
+
+    if (showClearConfirmDialog) {
+        val roomLabel = if (uiState.selectedRoom == CHAT_ROOM_VAULT) "Vault" else "General"
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = { Text("Clear $roomLabel history?") },
+            text = {
+                Text(
+                    "This deletes all messages in this room from the server for everyone " +
+                        "viewing it. Files already saved to your server are not affected - " +
+                        "only this message log. This can't be undone.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearHistory()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { showClearConfirmDialog = false }) { Text("Cancel") } },
         )
     }
 }
