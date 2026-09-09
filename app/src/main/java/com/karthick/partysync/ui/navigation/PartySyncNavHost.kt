@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.karthick.partysync.ui.addmapping.AddEditMappingScreen
 import com.karthick.partysync.ui.browse.BrowseScreen
+import com.karthick.partysync.ui.chat.ChatScreen
 import com.karthick.partysync.ui.home.HomeScreen
 import com.karthick.partysync.ui.mappingdetail.MappingDetailScreen
 import com.karthick.partysync.ui.servers.AddEditServerScreen
@@ -38,6 +39,9 @@ fun PartySyncNavHost(navController: NavHostController = rememberNavController())
         }
         composable(Screen.Browse.route) {
             BrowseScreen(onNavigateTab = onNavigateTab)
+        }
+        composable(Screen.Chat.route) {
+            ChatScreen(onNavigateTab = onNavigateTab)
         }
         composable(Screen.Settings.route) {
             SettingsScreen(

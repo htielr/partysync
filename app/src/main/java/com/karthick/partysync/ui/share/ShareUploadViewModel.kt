@@ -12,12 +12,18 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.karthick.partysync.data.local.db.Up2kSessionDao
 import com.karthick.partysync.data.local.db.Up2kSessionEntity
+import com.karthick.partysync.data.local.prefs.ChatRelayRepository
 import com.karthick.partysync.data.local.prefs.ServerProfile
 import com.karthick.partysync.data.local.prefs.ServerRepository
+import com.karthick.partysync.data.remote.ChatRelayApi
+import com.karthick.partysync.data.remote.ChatRelayResult
 import com.karthick.partysync.data.remote.RemoteFolderBrowser
 import com.karthick.partysync.data.remote.RemoteFolderListResult
 import com.karthick.partysync.data.repository.FolderMappingRepository
+import com.karthick.partysync.domain.model.CHAT_ROOM_GENERAL
+import com.karthick.partysync.domain.model.CHAT_ROOM_VAULT
 import com.karthick.partysync.domain.model.UploadSessionStatus
+import com.karthick.partysync.sync.worker.ChatRelayUploadWorker
 import com.karthick.partysync.sync.worker.ShareUploadWorker
 import com.karthick.partysync.sync.worker.UploadControlReceiver
 import com.karthick.partysync.ui.common.RemoteFolderBrowserState
@@ -37,8 +43,14 @@ import javax.inject.Inject
 
 data class SharedFileInfo(val uri: Uri, val displayName: String, val size: Long)
 
+enum class ShareDestination { SYNC_FOLDER, CHAT_RELAY }
+
 data class ShareUploadUiState(
     val files: List<SharedFileInfo> = emptyList(),
+    val sharedText: String? = null,
+    val destination: ShareDestination = ShareDestination.SYNC_FOLDER,
+    val chatRelayConfigured: Boolean = false,
+    val chatRoom: String = CHAT_ROOM_VAULT,
     val servers: List<ServerProfile> = emptyList(),
     val selectedServerId: Long? = null,
     val remotePath: String = "",
@@ -47,8 +59,15 @@ data class ShareUploadUiState(
     val isDone: Boolean = false,
     val folderBrowser: RemoteFolderBrowserState = RemoteFolderBrowserState(),
 ) {
+    // Bare shared text has nowhere to go in a sync folder - and Chat Relay's General room
+    // takes files only, so text is Vault-or-nothing.
     val canUpload: Boolean
-        get() = !isUploading && files.isNotEmpty() && selectedServerId != null && remotePath.startsWith("/")
+        get() = when {
+            isUploading -> false
+            sharedText != null -> destination == ShareDestination.CHAT_RELAY && chatRoom == CHAT_ROOM_VAULT
+            destination == ShareDestination.CHAT_RELAY -> chatRelayConfigured && files.isNotEmpty()
+            else -> files.isNotEmpty() && selectedServerId != null && remotePath.startsWith("/")
+        }
 }
 
 @HiltViewModel
@@ -59,6 +78,8 @@ class ShareUploadViewModel @Inject constructor(
     private val up2kSessionDao: Up2kSessionDao,
     private val remoteFolderBrowser: RemoteFolderBrowser,
     private val workManager: WorkManager,
+    private val chatRelayRepository: ChatRelayRepository,
+    private val chatRelayApi: ChatRelayApi,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ShareUploadUiState())
@@ -70,12 +91,30 @@ class ShareUploadViewModel @Inject constructor(
             it.copy(servers = servers, selectedServerId = if (servers.size == 1) servers.single().id else null)
         }
         viewModelScope.launch { refreshPathSuggestions() }
+        viewModelScope.launch {
+            chatRelayRepository.config.collect { config ->
+                _uiState.update { it.copy(chatRelayConfigured = config != null) }
+            }
+        }
     }
 
     /** Called once by [ShareUploadActivity] right after the ViewModel is created. */
     fun setSharedUris(uris: List<Uri>) {
         val resolved = uris.map(::resolveFileInfo)
         _uiState.update { it.copy(files = resolved) }
+    }
+
+    /** Called once by [ShareUploadActivity] for a text/link share (no destination but Chat Relay). */
+    fun setSharedText(text: String) {
+        _uiState.update { it.copy(sharedText = text, destination = ShareDestination.CHAT_RELAY) }
+    }
+
+    fun onDestinationSelected(destination: ShareDestination) {
+        _uiState.update { it.copy(destination = destination) }
+    }
+
+    fun onChatRoomSelected(room: String) {
+        _uiState.update { it.copy(chatRoom = room) }
     }
 
     private fun resolveFileInfo(uri: Uri): SharedFileInfo {
@@ -157,6 +196,13 @@ class ShareUploadViewModel @Inject constructor(
         }
     }
 
+    fun upload() {
+        when (_uiState.value.destination) {
+            ShareDestination.SYNC_FOLDER -> uploadToSyncFolder()
+            ShareDestination.CHAT_RELAY -> uploadToChatRelay()
+        }
+    }
+
     /**
      * Copies each shared file into the app's private cache (while this activity is still
      * alive — see the project plan for why that's required for the upload to survive the
@@ -164,7 +210,7 @@ class ShareUploadViewModel @Inject constructor(
      * [ShareUploadWorker] per session under a session-scoped unique work name so
      * [UploadControlReceiver]'s Pause action can target exactly one upload.
      */
-    fun upload() {
+    private fun uploadToSyncFolder() {
         val state = _uiState.value
         val serverId = state.selectedServerId ?: return
         if (state.files.isEmpty()) return
@@ -196,6 +242,57 @@ class ShareUploadViewModel @Inject constructor(
                         ExistingWorkPolicy.REPLACE,
                         request,
                     )
+                }
+            }
+            _uiState.update { it.copy(isUploading = false, isDone = true) }
+        }
+    }
+
+    /**
+     * Chat Relay's upload API has no chunking/resume support, so unlike [uploadToSyncFolder]
+     * there's no [Up2kSessionEntity] per file - just a cached copy + a one-shot
+     * [ChatRelayUploadWorker] each. Shared text (Vault only, see [ShareUploadUiState.canUpload])
+     * is small enough to send directly rather than via a worker.
+     */
+    private fun uploadToChatRelay() {
+        val state = _uiState.value
+
+        val text = state.sharedText
+        if (text != null) {
+            _uiState.update { it.copy(isUploading = true) }
+            viewModelScope.launch {
+                val config = chatRelayRepository.config.value
+                if (config == null) {
+                    _uiState.update { it.copy(isUploading = false) }
+                    return@launch
+                }
+                when (chatRelayApi.sendMessage(config.baseUrl, config.apiKey, state.chatRoom, text)) {
+                    is ChatRelayResult.Success -> _uiState.update { it.copy(isUploading = false, isDone = true) }
+                    else -> _uiState.update { it.copy(isUploading = false) }
+                }
+            }
+            return
+        }
+
+        if (state.files.isEmpty()) return
+        _uiState.update { it.copy(isUploading = true) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                for (file in state.files) {
+                    val cached = copyToCache(file) ?: continue
+                    val mimeType = context.contentResolver.getType(file.uri) ?: "application/octet-stream"
+                    val request = OneTimeWorkRequestBuilder<ChatRelayUploadWorker>()
+                        .setInputData(
+                            ChatRelayUploadWorker.buildInputData(
+                                room = state.chatRoom,
+                                filePath = cached.absolutePath,
+                                filename = file.displayName,
+                                mimeType = mimeType,
+                            ),
+                        )
+                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                        .build()
+                    workManager.enqueue(request)
                 }
             }
             _uiState.update { it.copy(isUploading = false, isDone = true) }

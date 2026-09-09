@@ -3,6 +3,7 @@ package com.karthick.partysync.ui.navigation
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
     data object Browse : Screen("browse")
+    data object Chat : Screen("chat")
     data object Settings : Screen("settings")
 
     data object AddEditMapping : Screen("mapping/{mappingId}") {
