@@ -30,12 +30,11 @@ class ShareUploadActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val uris = sharedUrisFromIntent(intent)
-        val text = if (uris.isEmpty()) sharedTextFromIntent(intent) else null
-        if (uris.isEmpty() && text == null) {
+        if (uris.isEmpty()) {
             finish()
             return
         }
-        if (uris.isNotEmpty()) viewModel.setSharedUris(uris) else viewModel.setSharedText(text!!)
+        viewModel.setSharedUris(uris)
 
         setContent {
             val settings by settingsRepository.settings.collectAsState()
@@ -56,14 +55,6 @@ class ShareUploadActivity : ComponentActivity() {
         Intent.ACTION_SEND_MULTIPLE -> extraStreamUriList(intent)
         else -> emptyList()
     }
-
-    /**
-     * A plain-text/link share (e.g. from a browser's "Share" on a page) has no [Intent.EXTRA_STREAM]
-     * - only [Intent.EXTRA_TEXT]. There's no copyparty destination for bare text, only Chat Relay's
-     * Vault room, so this is only meaningful when [ShareUploadViewModel] routes to that destination.
-     */
-    private fun sharedTextFromIntent(intent: Intent): String? =
-        if (intent.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.isNotBlank() } else null
 
     private fun extraStreamUri(intent: Intent): Uri? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

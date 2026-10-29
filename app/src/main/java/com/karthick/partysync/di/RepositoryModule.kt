@@ -1,7 +1,5 @@
 package com.karthick.partysync.di
 
-import com.karthick.partysync.data.local.prefs.ChatRelayRepository
-import com.karthick.partysync.data.local.prefs.ChatRelayRepositoryImpl
 import com.karthick.partysync.data.local.prefs.ServerRepository
 import com.karthick.partysync.data.local.prefs.ServerRepositoryImpl
 import com.karthick.partysync.data.local.prefs.SettingsRepository
@@ -29,8 +27,4 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindServerRepository(impl: ServerRepositoryImpl): ServerRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindChatRelayRepository(impl: ChatRelayRepositoryImpl): ChatRelayRepository
 }
