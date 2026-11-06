@@ -243,6 +243,52 @@ fun AddEditMappingScreen(
                         selected = uiState.syncMode == SyncMode.TWO_WAY,
                         onSelect = { viewModel.onSyncModeChanged(SyncMode.TWO_WAY) },
                     )
+
+                    // Offload option — only meaningful for one-way upload (in two-way it would
+                    // just re-download what it deleted).
+                    if (uiState.syncMode == SyncMode.ONE_WAY_UPLOAD) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            "Delete after upload",
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Text(
+                                            "Remove each file from this phone once it's safely on the " +
+                                                "server. Frees space; the server keeps the only copy.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Switch(
+                                    checked = uiState.deleteAfterSync,
+                                    onCheckedChange = viewModel::onDeleteAfterSyncChanged,
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

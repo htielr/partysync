@@ -30,6 +30,7 @@ class FolderMappingRepositoryImpl @Inject constructor(
         displayName: String,
         remoteBasePath: String,
         syncMode: SyncMode,
+        deleteAfterSync: Boolean,
         wifiOnlyOverride: Boolean?,
     ): Long {
         context.contentResolver.takePersistableUriPermission(treeUri, PERSISTABLE_PERMISSION_FLAGS)
@@ -40,6 +41,7 @@ class FolderMappingRepositoryImpl @Inject constructor(
                 displayName = displayName,
                 remoteBasePath = remoteBasePath,
                 syncMode = syncMode,
+                deleteAfterSync = deleteAfterSync,
                 wifiOnlyOverride = wifiOnlyOverride,
                 createdAt = System.currentTimeMillis(),
             ),

@@ -14,8 +14,8 @@ android {
         applicationId = "com.karthick.partysync"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 10
+        versionName = "0.8.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -49,6 +49,14 @@ android {
             if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
+        }
+        debug {
+            // Distinct applicationId so a debug/test build installs ALONGSIDE a release install
+            // (e.g. a phone that already has PartySync with synced folders worth preserving) —
+            // separate app, separate data, zero risk to the real one. Every manifest authority
+            // uses ${applicationId}, so they stay unique automatically.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
     }
 

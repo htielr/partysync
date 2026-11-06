@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.karthick.partysync.data.local.db.AppDatabase
 import com.karthick.partysync.data.local.db.FolderMappingDao
 import com.karthick.partysync.data.local.db.SyncFileStateDao
+import com.karthick.partysync.data.local.db.SyncHistoryDao
 import com.karthick.partysync.data.local.db.Up2kSessionDao
 import dagger.Module
 import dagger.Provides
@@ -21,7 +22,12 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-            .addMigrations(AppDatabase.MIGRATION_2_3)
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
+            )
             // Safety net for any future unhandled version bump — the 2->3 jump above is a
             // real migration and won't hit this fallback. See the "Multi-server support" plan
             // for why the earlier 1->2 jump used a one-time destructive migration instead.
@@ -36,4 +42,7 @@ object DatabaseModule {
 
     @Provides
     fun provideUp2kSessionDao(db: AppDatabase): Up2kSessionDao = db.up2kSessionDao()
+
+    @Provides
+    fun provideSyncHistoryDao(db: AppDatabase): SyncHistoryDao = db.syncHistoryDao()
 }

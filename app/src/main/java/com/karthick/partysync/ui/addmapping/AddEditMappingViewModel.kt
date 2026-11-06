@@ -33,6 +33,7 @@ data class AddEditMappingUiState(
     val folderDisplayName: String = "",
     val remoteBasePath: String = "",
     val syncMode: SyncMode = SyncMode.ONE_WAY_UPLOAD,
+    val deleteAfterSync: Boolean = false,
     val wifiOverride: WifiOverrideChoice = WifiOverrideChoice.INHERIT,
     val enabled: Boolean = true,
     val isSaved: Boolean = false,
@@ -71,6 +72,7 @@ class AddEditMappingViewModel @Inject constructor(
                             folderDisplayName = mapping.displayName,
                             remoteBasePath = mapping.remoteBasePath,
                             syncMode = mapping.syncMode,
+                            deleteAfterSync = mapping.deleteAfterSync,
                             wifiOverride = when (mapping.wifiOnlyOverride) {
                                 null -> WifiOverrideChoice.INHERIT
                                 true -> WifiOverrideChoice.WIFI_ONLY
@@ -105,7 +107,16 @@ class AddEditMappingViewModel @Inject constructor(
 
     fun onRemoteBasePathChanged(path: String) = _uiState.update { it.copy(remoteBasePath = path) }
 
-    fun onSyncModeChanged(mode: SyncMode) = _uiState.update { it.copy(syncMode = mode) }
+    fun onSyncModeChanged(mode: SyncMode) = _uiState.update {
+        // "Delete after upload" only applies to one-way uploads; clear it if switching away so a
+        // stale enabled flag can't be saved against a two-way mapping.
+        it.copy(
+            syncMode = mode,
+            deleteAfterSync = if (mode == SyncMode.ONE_WAY_UPLOAD) it.deleteAfterSync else false,
+        )
+    }
+
+    fun onDeleteAfterSyncChanged(enabled: Boolean) = _uiState.update { it.copy(deleteAfterSync = enabled) }
 
     fun onWifiOverrideChanged(choice: WifiOverrideChoice) = _uiState.update { it.copy(wifiOverride = choice) }
 
@@ -177,6 +188,7 @@ class AddEditMappingViewModel @Inject constructor(
                         serverId = serverId,
                         remoteBasePath = state.remoteBasePath,
                         syncMode = state.syncMode,
+                        deleteAfterSync = state.deleteAfterSync,
                         wifiOnlyOverride = wifiOverride,
                         enabled = state.enabled,
                     ),
@@ -188,6 +200,7 @@ class AddEditMappingViewModel @Inject constructor(
                     displayName = state.folderDisplayName.ifBlank { "Untitled folder" },
                     remoteBasePath = state.remoteBasePath,
                     syncMode = state.syncMode,
+                    deleteAfterSync = state.deleteAfterSync,
                     wifiOnlyOverride = wifiOverride,
                 )
             }

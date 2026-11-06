@@ -17,6 +17,7 @@ interface FolderMappingRepository {
         displayName: String,
         remoteBasePath: String,
         syncMode: SyncMode,
+        deleteAfterSync: Boolean,
         wifiOnlyOverride: Boolean?,
     ): Long
 

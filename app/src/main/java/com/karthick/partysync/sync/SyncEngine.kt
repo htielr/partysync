@@ -10,6 +10,8 @@ import com.karthick.partysync.data.local.db.FolderMappingDao
 import com.karthick.partysync.data.local.db.FolderMappingEntity
 import com.karthick.partysync.data.local.db.SyncFileStateDao
 import com.karthick.partysync.data.local.db.SyncFileStateEntity
+import com.karthick.partysync.data.local.db.SyncHistoryDao
+import com.karthick.partysync.data.local.db.SyncHistoryEntity
 import com.karthick.partysync.data.local.prefs.ServerProfile
 import com.karthick.partysync.data.local.prefs.ServerRepository
 import com.karthick.partysync.data.local.prefs.SettingsRepository
@@ -49,6 +51,7 @@ class SyncEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     private val folderMappingDao: FolderMappingDao,
     private val syncFileStateDao: SyncFileStateDao,
+    private val syncHistoryDao: SyncHistoryDao,
     private val serverRepository: ServerRepository,
     private val saFolderScanner: SaFolderScanner,
     private val remoteFolderScanner: RemoteFolderScanner,
@@ -130,6 +133,22 @@ class SyncEngine @Inject constructor(
 
             val previousAttempts = knownByPath[file.relativePath]?.attemptCount ?: 0
             val succeeded = status == FileSyncStatus.SUCCESS
+
+            if (succeeded) {
+                // Record every successful upload in the user-facing history (survives the local
+                // file going away and is cleared only on the user's request).
+                val offloaded = mapping.deleteAfterSync && deleteLocalFile(documentUri)
+                logHistory(mapping, file.relativePath, file.size, offloaded)
+                if (offloaded) {
+                    // The file is now safely on the server, so drop its operational row. The next
+                    // scan simply won't see it — no re-upload (it's gone) and no spurious "deleted
+                    // locally" reconciliation. (If the delete had failed, `offloaded` is false and
+                    // we fall through to record normal synced state below, keeping the file.)
+                    syncFileStateDao.deleteByPaths(mapping.id, listOf(file.relativePath))
+                    continue
+                }
+            }
+
             syncFileStateDao.upsert(
                 SyncFileStateEntity(
                     mappingId = mapping.id,
@@ -211,7 +230,7 @@ class SyncEngine @Inject constructor(
 
         val result = uploadLocalFile(mapping, server, documentUri, file)
         val (status, errorMessage) = classifyCopyPartyResult(result)
-        recordTwoWayState(mapping.id, action.relativePath, file, remoteMirror = file, status, errorMessage, knownByPath)
+        recordTwoWayState(mapping, action.relativePath, file, remoteMirror = file, status, errorMessage, knownByPath)
         return status.toOutcome()
     }
 
@@ -230,7 +249,7 @@ class SyncEngine @Inject constructor(
             relativePath,
         ) { input -> writeToLocalFile(treeUri, relativePath, input) }
         val (status, errorMessage) = classifyCopyPartyResult(result)
-        recordTwoWayState(mapping.id, relativePath, localMirror = remoteFile, remoteFile, status, errorMessage, knownByPath)
+        recordTwoWayState(mapping, relativePath, localMirror = remoteFile, remoteFile, status, errorMessage, knownByPath)
         return status.toOutcome()
     }
 
@@ -280,7 +299,7 @@ class SyncEngine @Inject constructor(
             ?: (FileSyncStatus.FAILED_OTHER to "Local file vanished before conflict upload")
 
         recordTwoWayState(
-            mapping.id,
+            mapping,
             action.relativePath,
             localMirror = action.local,
             remoteMirror = action.local,
@@ -302,7 +321,7 @@ class SyncEngine @Inject constructor(
      * will surface a one-time, self-correcting extra transfer rather than a persistent loop.
      */
     private suspend fun recordTwoWayState(
-        mappingId: Long,
+        mapping: FolderMappingEntity,
         relativePath: String,
         localMirror: ScannedFile,
         remoteMirror: ScannedFile,
@@ -312,9 +331,13 @@ class SyncEngine @Inject constructor(
     ) {
         val previous = knownByPath[relativePath]
         val succeeded = status == FileSyncStatus.SUCCESS || status == FileSyncStatus.CONFLICT_RESOLVED
+        if (succeeded) {
+            // Two-way transfers never offload (the local copy is kept), so offloaded = false.
+            logHistory(mapping, relativePath, localMirror.size, offloaded = false)
+        }
         syncFileStateDao.upsert(
             SyncFileStateEntity(
-                mappingId = mappingId,
+                mappingId = mapping.id,
                 relativePath = relativePath,
                 documentId = localMirror.documentId,
                 localSize = localMirror.size,
@@ -430,9 +453,43 @@ class SyncEngine @Inject constructor(
         return MappingSyncResult(mapping.id, uploaded = 0, failed = 0, false, false, permissionLost = false)
     }
 
+    /** Joins a mapping's remote base path with a file's relative path into one display path. */
+    private fun joinRemotePath(base: String, relativePath: String): String =
+        base.trimEnd('/') + "/" + relativePath.trimStart('/')
+
+    /** Appends a successful transfer to the mapping's user-facing sync history. */
+    private suspend fun logHistory(
+        mapping: FolderMappingEntity,
+        relativePath: String,
+        sizeBytes: Long,
+        offloaded: Boolean,
+    ) {
+        syncHistoryDao.insert(
+            SyncHistoryEntity(
+                mappingId = mapping.id,
+                relativePath = relativePath,
+                remotePath = joinRemotePath(mapping.remoteBasePath, relativePath),
+                sizeBytes = sizeBytes,
+                offloaded = offloaded,
+                syncedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     private fun existsLocally(documentUri: Uri): Boolean = try {
         context.contentResolver.openInputStream(documentUri)?.use { } != null
     } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * Deletes a just-uploaded local file for an offload mapping. Returns whether it is gone.
+     * Any failure (permission, provider refusal, already-removed) is swallowed as `false` so the
+     * caller keeps the file and its normal synced state rather than losing track of it.
+     */
+    private fun deleteLocalFile(documentUri: Uri): Boolean = try {
+        DocumentsContract.deleteDocument(context.contentResolver, documentUri)
+    } catch (e: Exception) {
         false
     }
 
