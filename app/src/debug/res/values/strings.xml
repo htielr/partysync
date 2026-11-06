@@ -1,0 +1,4 @@
+<resources>
+    <!-- Distinguishes the side-by-side debug install from a real release install on the same device. -->
+    <string name="app_name">PartySync (test)</string>
+</resources>

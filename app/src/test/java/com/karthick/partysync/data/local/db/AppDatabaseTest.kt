@@ -25,6 +25,7 @@ class AppDatabaseTest {
     private lateinit var db: AppDatabase
     private lateinit var mappingDao: FolderMappingDao
     private lateinit var fileStateDao: SyncFileStateDao
+    private lateinit var historyDao: SyncHistoryDao
 
     @Before
     fun setUp() {
@@ -34,6 +35,7 @@ class AppDatabaseTest {
         ).allowMainThreadQueries().build()
         mappingDao = db.folderMappingDao()
         fileStateDao = db.syncFileStateDao()
+        historyDao = db.syncHistoryDao()
     }
 
     @After
@@ -119,6 +121,56 @@ class AppDatabaseTest {
         assertEquals(1, remaining.size)
         assertEquals("keep.jpg", remaining.single().relativePath)
     }
+
+    @Test
+    fun `sync history is per-mapping, newest-first, and survives its mapping being deleted`() = runTest {
+        val id = mappingDao.insert(newMapping())
+        val other = mappingDao.insert(newMapping("Other"))
+        historyDao.insert(newHistory(id, "a.jpg", syncedAt = 100L, sizeBytes = 10L, offloaded = false))
+        historyDao.insert(newHistory(id, "b.jpg", syncedAt = 300L, sizeBytes = 20L, offloaded = true))
+        historyDao.insert(newHistory(id, "c.jpg", syncedAt = 200L, sizeBytes = 30L, offloaded = false))
+        historyDao.insert(newHistory(other, "z.jpg", syncedAt = 999L))
+
+        // Deleting the mapping must NOT cascade to the history (no FK) — it's a durable record.
+        mappingDao.delete(mappingDao.getById(id)!!)
+
+        val entries = historyDao.observeForMapping(id).first()
+        assertEquals(3, entries.size)
+        assertEquals(listOf("b.jpg", "c.jpg", "a.jpg"), entries.map { it.relativePath })
+        assertEquals(60L, entries.sumOf { it.sizeBytes })
+        assertEquals(1, entries.count { it.offloaded })
+        // Scoped per mapping: the other mapping's entry is not returned here.
+        assertEquals(1, historyDao.observeForMapping(other).first().size)
+    }
+
+    @Test
+    fun `clearForMapping empties only that mapping's history`() = runTest {
+        val id = mappingDao.insert(newMapping())
+        val other = mappingDao.insert(newMapping("Other"))
+        historyDao.insert(newHistory(id, "a.jpg"))
+        historyDao.insert(newHistory(id, "b.jpg"))
+        historyDao.insert(newHistory(other, "z.jpg"))
+
+        historyDao.clearForMapping(id)
+
+        assertTrue(historyDao.observeForMapping(id).first().isEmpty())
+        assertEquals(1, historyDao.observeForMapping(other).first().size)
+    }
+
+    private fun newHistory(
+        mappingId: Long,
+        relativePath: String,
+        syncedAt: Long = 1_700_000_000_000L,
+        sizeBytes: Long = 1_024L,
+        offloaded: Boolean = false,
+    ) = SyncHistoryEntity(
+        mappingId = mappingId,
+        relativePath = relativePath,
+        remotePath = "/phone/documents/$relativePath",
+        sizeBytes = sizeBytes,
+        offloaded = offloaded,
+        syncedAt = syncedAt,
+    )
 
     private fun newFileState(
         mappingId: Long,

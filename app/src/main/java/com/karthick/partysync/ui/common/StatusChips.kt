@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Sync
@@ -210,6 +211,45 @@ fun FileStatusChip(
         icon = null,
         modifier = modifier,
     )
+}
+
+/** History chip: whether a successfully-synced file was offloaded (deleted locally) or kept. */
+@Composable
+fun HistoryStatusChip(
+    offloaded: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (offloaded) {
+        StatusBadge(
+            text = "Offloaded",
+            containerColor = StatusInfoContainer,
+            contentColor = StatusInfo,
+            icon = {
+                Icon(
+                    Icons.Filled.DeleteSweep,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = StatusInfo,
+                )
+            },
+            modifier = modifier,
+        )
+    } else {
+        StatusBadge(
+            text = "Synced",
+            containerColor = StatusSuccessContainer,
+            contentColor = StatusSuccess,
+            icon = {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = StatusSuccess,
+                )
+            },
+            modifier = modifier,
+        )
+    }
 }
 
 @Composable

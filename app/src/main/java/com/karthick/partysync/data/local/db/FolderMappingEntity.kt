@@ -1,5 +1,6 @@
 package com.karthick.partysync.data.local.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.karthick.partysync.domain.model.MappingSyncStatus
@@ -18,6 +19,12 @@ data class FolderMappingEntity(
     val displayName: String,
     val remoteBasePath: String,
     val syncMode: SyncMode,
+    /**
+     * When true (one-way upload only), each local file is deleted from the phone folder
+     * immediately after it uploads successfully — an "offload" that frees local storage and
+     * leaves the server holding the only copy. Per-mapping; defaults off.
+     */
+    @ColumnInfo(defaultValue = "0") val deleteAfterSync: Boolean = false,
     /** null = inherit the app-wide Wi-Fi-only setting */
     val wifiOnlyOverride: Boolean?,
     val enabled: Boolean = true,
